@@ -1,0 +1,271 @@
+body {
+    font-family: Arial, sans-serif;
+    line-height: 1.6;
+    margin: 20px;
+    background-color: #f5f5f5;
+}
+p, ul, li{
+    font-size: 14px;
+    color: #555;
+}
+.email-container {
+    max-width: 600px;
+    margin: 20px auto;
+    background: white;
+    padding: 20px;
+    border-radius: 4px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+.card-layout .info-card {
+    background: #f8f9fa;
+    border-left: 4px solid #1e40af;
+    padding: 0;
+    margin: 20px 0;
+    border-radius: 4px;
+    overflow: hidden;
+}
+.card-layout .info-card-title {
+    color: #1e40af;
+    font-weight: bold;
+    font-size: 16px;
+    margin: 0;
+    padding: 12px 20px;
+    border-bottom: 2px solid #1e40af;
+}
+.card-layout .info-card-body {
+    padding: 20px;
+}
+.info-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.info-table tr {
+    border-bottom: 1px solid #eee;
+}
+.info-table td {
+    padding: 8px 0;
+    vertical-align: top;
+}
+.info-table .last-row {
+    border-bottom: none;
+    padding-bottom: 20px;
+}
+tr.card-note {
+    border-bottom: none;
+    border-top: 1px solid #eee;
+}
+tr.card-note td {
+    padding-top: 15px;
+}
+.card-layout .info-label {
+    font-weight: bold;
+    color: #555;
+    width: 40%;
+    padding-right: 10px;
+}
+.card-layout .info-value {
+    color: #555;
+}
+/* button styles */
+.action-buttons {
+    text-align: center;
+    margin-top: 20px;
+}
+.btn {
+    display: inline-block;
+    padding: 12px 30px;
+    text-decoration: none;
+    border-radius: 4px;
+    font-weight: bold;
+    margin: 10px;
+    transition: all 0.3s ease;
+    border: none;
+    cursor: pointer;
+}
+.btn-approve {
+    background: #4CAF50;
+    color: #fff !important;
+}
+.btn-reject {
+    background: #F44336;
+    color: #fff !important;
+}
+.btn-forward {
+    background: #1e40af;
+    color: #fff !important;
+    margin: 10px 0 0 0 !important;
+    padding: 10px 20px !important;
+}
+.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+/* Leave Balance Table */
+.balance-table-wrapper {
+    margin: 20px 0;
+}
+.balance-table {
+    width: 100%;
+    margin: 0 auto;
+    border-collapse: collapse;
+    text-align: center;
+    border-radius: 4px;
+    overflow: hidden;
+}
+.balance-table th {
+    padding: 12px;
+    font-size: 16px;
+    font-weight: bold;
+}
+.balance-table td {
+    padding: 15px 10px;
+    font-size: 16px;
+    border-top: 1px solid #e5e7eb;
+}
+.vl-header {
+    background-color: #4C1130;
+    color: #fff;
+}
+.sl-header {
+    background-color: #073763;
+    color: #fff;
+}
+.vl-subheader {
+    background-color: #D5A6BD;
+    font-size: 14px;
+    font-weight: 600;
+    width: 25%;
+}
+.sl-subheader {
+    background-color: #9FC5E8;
+    font-size: 14px;
+    font-weight: 600;
+    width: 25%;
+}
+.balance-table tbody tr {
+    background: #d1d5db30;
+}
+/* Full-width note at bottom of card */
+.card-note p{
+    font-size: 12px;
+    color: #555;
+    font-style: italic;
+    margin: 0;
+}
+/* Emergency leave note outside card */
+.external-note {
+    background: #eff6ff;
+    border-left: 4px solid #1e40af;
+    padding: 20px;
+    margin: 15px 0;
+    border-radius: 4px;
+}
+.external-note p {
+    margin: 5px 0;
+    font-size: 13px;
+    color: #555;
+}
+.external-note ul {
+    margin: 8px 0 0 0;
+    padding-left: 20px;
+}
+.external-note li {
+    margin: 3px 0;
+    font-size: 13px;
+}
+.alerturl-container {
+    width: 40%; 
+    margin: auto;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    text-align: center;
+}
+/* Approved styles (green) */
+.alerturl-container.approve, .alerturl-container.forward {
+    background-color: #eafaf1;
+    border: 1px solid #28a745;
+    color: #155724;
+}
+.alerturl-container.approve .alerturl-header p, .alerturl-container.forward .alerturl-header p {
+    font-size: 20px;
+    font-weight: bold;
+    color: #155724;
+    margin-bottom: 10px;
+}
+/* Rejected styles (red) */
+.alerturl-container.reject {
+    background-color: #f8d7da;
+    border: 1px solid #dc3545;
+    color: #721c24;
+}
+.alerturl-container.reject .alerturl-header p {
+    font-size: 20px;
+    font-weight: bold;
+    color: #721c24;
+    margin-bottom: 10px;
+}
+/* Error/Warning styles (red/orange) */
+.alerturl-container.error {
+    background-color: #fceaea;
+    border: 1px solid #dc3545;
+    color: #721c24;
+}
+.alerturl-container.error .alerturl-header p {
+    font-size: 20px;
+    font-weight: bold;
+    color: #721c24;
+    margin-bottom: 10px;
+}
+.alerturl-message p {
+    font-size: 17px;
+    color: #000;
+    line-height: 1.5rem;
+}
+.alerturl-request-id {
+    font-size: 14px;
+    color: #666;
+    margin-top: 10px;
+}
+/* Desktop: Side by side */
+@media only screen and (min-width: 768px) {
+    .balance-table-wrapper {
+        display: flex;
+        gap: 10px;
+    }
+    
+    .balance-table-vl,
+    .balance-table-sl {
+        width: 48% !important;
+        margin-bottom: 0 !important;
+    }
+}
+@media only screen and (max-width: 768px) {
+    .info-label {
+        display: block;
+        width: 100% !important;
+        padding-bottom: 0px !important;
+    }
+    .info-value {
+        display: block;
+        width: 100% !important;
+    }
+    .alerturl-container {
+        width: 80%;
+    }
+    .balance-table-wrapper {
+        display: block;
+    }
+    .balance-table-vl {
+        margin-bottom: 15px !important;
+    }
+    .balance-table-vl,
+    .balance-table-sl {
+        width: 100% !important;
+    }
+    .balance-table th,
+    .balance-table td {
+        font-size: 14px !important;
+        padding: 10px !important;
+    }
+}

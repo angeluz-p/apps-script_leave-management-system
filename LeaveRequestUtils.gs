@@ -1,12 +1,13 @@
 // Modify the scriptUrl when creating a new copy of the sheet
 function createApprovalUrl(row, action) {
-  const scriptUrl = "https://script.google.com/macros/s/AKfycbyaQfBPr41qCRu4q-EOSHEKBofBVpJ9zs0gkkruDkrz/dev";
+  const scriptUrl =
+    "https://script.google.com/macros/s/{change_the_app_id}/dev";
   return `${scriptUrl}?row=${row}&action=${action}`;
 }
 
 /**
  * Change these configurations once to update everywhere
- */ 
+ */
 
 // Get Sheet URL dynamically
 const sheet = SpreadsheetApp.getActiveSpreadsheet();
@@ -144,7 +145,7 @@ if (today >= dec26ThisYear) {
 }
 
 const PERIOD_ALLOWED_START_DATE = new Date(cycleStartYear, 11, 26); // Dec 26 - Previous Year
-const PERIOD_ALLOWED_END_DATE = new Date(cycleEndYear, 11, 25);   // Dec 25 - Current Year
+const PERIOD_ALLOWED_END_DATE = new Date(cycleEndYear, 11, 25); // Dec 25 - Current Year
 
 const DEBUG_MODE = false;
 
@@ -160,21 +161,30 @@ function include(filename) {
 }
 
 // Smart email sender - automatically chooses system or user email
-function sendTemplatedEmail(recipient, subject, templateName, templateData, attachments = [], useSystemSender = false, cc = null, bcc = null) {
+function sendTemplatedEmail(
+  recipient,
+  subject,
+  templateName,
+  templateData,
+  attachments = [],
+  useSystemSender = false,
+  cc = null,
+  bcc = null
+) {
   try {
     const template = HtmlService.createTemplateFromFile(templateName);
-    
-    Object.keys(templateData).forEach(key => {
+
+    Object.keys(templateData).forEach((key) => {
       template[key] = templateData[key];
     });
-    
+
     const htmlBody = template.evaluate().getContent();
-    
+
     const emailOptions = {
       htmlBody: htmlBody,
-      attachments: attachments.length > 0 ? attachments : undefined
+      attachments: attachments.length > 0 ? attachments : undefined,
     };
-    
+
     // Add 'from' parameter only if using system sender
     if (useSystemSender) {
       emailOptions.from = TEST_DEV_ACC;
@@ -184,16 +194,20 @@ function sendTemplatedEmail(recipient, subject, templateName, templateData, atta
     if (cc) {
       emailOptions.cc = cc;
     }
-    
+
     if (bcc) {
       emailOptions.bcc = bcc;
     }
-    
+
     GmailApp.sendEmail(recipient, subject, "", emailOptions);
-    
-    const senderInfo = useSystemSender ? TEST_DEV_ACC : Session.getActiveUser().getEmail();
-    const ccInfo = cc ? `, CC: ${cc}` : '';
-    Logger.log(`✅ Email sent to ${recipient}${ccInfo} from ${senderInfo}: ${subject}`);
+
+    const senderInfo = useSystemSender
+      ? TEST_DEV_ACC
+      : Session.getActiveUser().getEmail();
+    const ccInfo = cc ? `, CC: ${cc}` : "";
+    Logger.log(
+      `✅ Email sent to ${recipient}${ccInfo} from ${senderInfo}: ${subject}`
+    );
     return true;
   } catch (error) {
     Logger.log(`❌ Failed to send email to ${recipient}: ${error.message}`);
@@ -204,14 +218,14 @@ function sendTemplatedEmail(recipient, subject, templateName, templateData, atta
 // Retrieves Google Drive file attachments from a comma-separated list of URLs/IDs
 function getAttachmentBlobs(employeeAttachments) {
   const attachments = [];
-  
+
   if (!employeeAttachments) {
     return attachments;
   }
-  
-  const attachmentLinks = employeeAttachments.split(',');
-  
-  attachmentLinks.forEach(link => {
+
+  const attachmentLinks = employeeAttachments.split(",");
+
+  attachmentLinks.forEach((link) => {
     try {
       let fileId = extractDriveFileId(link.trim());
       if (fileId) {
@@ -222,7 +236,7 @@ function getAttachmentBlobs(employeeAttachments) {
       Logger.log("Error fetching attachment: " + error.message);
     }
   });
-  
+
   return attachments;
 }
 
@@ -251,8 +265,8 @@ function parseSheetDate(sheetDate) {
       Logger.log(`❌ Invalid string date format: ${sheetDate}`);
       return null;
     }
-  } 
-  
+  }
+
   // ✅ If it's a number (Google Sheets serial date), convert it
   if (typeof sheetDate === "number") {
     return new Date(1899, 11, 30 + sheetDate);
@@ -270,11 +284,15 @@ function formatName(name) {
     return str
       .trim()
       .split(/\s+/) // Split by spaces
-      .map(word =>
-        word
-          .split("-") // Split hyphenated names
-          .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()) // Capitalize first letter, lowercase rest
-          .join("-") // Rejoin with hyphen
+      .map(
+        (word) =>
+          word
+            .split("-") // Split hyphenated names
+            .map(
+              (part) =>
+                part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
+            ) // Capitalize first letter, lowercase rest
+            .join("-") // Rejoin with hyphen
       )
       .join(" "); // Rejoin words with spaces
   }
@@ -288,8 +306,8 @@ function formatName(name) {
 }
 
 function formatDate(date) {
-    const options = { year: 'numeric', month: 'long', day: 'numeric' };
-    return new Date(date).toLocaleDateString('en-US', options);
+  const options = { year: "numeric", month: "long", day: "numeric" };
+  return new Date(date).toLocaleDateString("en-US", options);
 }
 
 function parseLeaveHours(leaveInput) {
@@ -306,11 +324,22 @@ function parseLeaveHours(leaveInput) {
   return match ? parseFloat(match[1]) : NaN; // Convert to number or return NaN if not found
 }
 
-function getBalanceMessage(leaveType, subLeaveType, balance, isRba = false, isJanToJune = false, isJulyToDec = false) {
+function getBalanceMessage(
+  leaveType,
+  subLeaveType,
+  balance,
+  isRba = false,
+  isJanToJune = false,
+  isJulyToDec = false
+) {
   let note = "";
   if (isRba) {
-      const period = isJanToJune ? "January to June" : isJulyToDec ? "July to December" : "";
-      note = `
+    const period = isJanToJune
+      ? "January to June"
+      : isJulyToDec
+      ? "July to December"
+      : "";
+    note = `
       <tr class="card-note">
         <td colspan="2">
           <p>ℹ️  The displayed remaining balance covers the <strong>${period}</strong> period.</p>
@@ -321,7 +350,11 @@ function getBalanceMessage(leaveType, subLeaveType, balance, isRba = false, isJa
   return `
     <tr class="last-row">
         <td class="info-label">Remaining Balance:</td>
-        <td class="info-value">${balance === null ? '<span style="color: red;"><strong>No balance</strong> corresponds to the email you entered on the form.</span>' : balance}</td>
+        <td class="info-value">${
+          balance === null
+            ? '<span style="color: red;"><strong>No balance</strong> corresponds to the email you entered on the form.</span>'
+            : balance
+        }</td>
     </tr>
     ${note}`;
 }

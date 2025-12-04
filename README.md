@@ -29,6 +29,3 @@ This project automates the entire leave request and approval process using **Goo
 - Minimizes errors in leave tracking
 - Speeds up the approval process
 - Provides transparency and accessibility for all employees
-
-## License
-This project is licensed under the MIT License.  

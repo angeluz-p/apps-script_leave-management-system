@@ -1,7 +1,6 @@
 // Approval Link base on Request ID - Modify the scriptUrl when creating a new copy of the sheet
 function createApprovalUrl(row, action) {
-  const scriptUrl =
-    "https://script.google.com/macros/s/{change_the_app_id}/dev";
+  const scriptUrl = "insert_web_app_url";
   return `${scriptUrl}?id=${encodeURIComponent(requestId)}&action=${action}`;
 }
 

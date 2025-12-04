@@ -151,6 +151,19 @@ function onFormSubmit(e) {
     );
   }
 
+  // Set AC No formula
+  sheet
+    .getRange(lastRow, COL_N_AC_NO)
+    .setFormula(
+      `=IFERROR(INDEX('Employee List'!A:A, MATCH(B${lastRow}, 'Employee List'!C:C, 0)), "")`
+    );
+  debugLog(`Set AC No formula for row ${lastRow}`);
+
+  // Wait a moment for the formula to calculate, then get the value
+  SpreadsheetApp.flush(); // Force spreadsheet to update
+  const acNo = sheet.getRange(lastRow, COL_N_AC_NO).getValue();
+  debugLog(`AC No value: ${acNo}`);
+
   // Add dropdown to the new row's Status column
   const statusOptions = [
     "Approved",
@@ -179,7 +192,6 @@ function onFormSubmit(e) {
   const supervisorEmail = row[COL_A_APPROVER]?.trim(); // Ensure it exists and remove extra spaces
   const statusColumn = COL_N_MAIN_STATUS; // Change this based on your Google Sheet column index for "Status"
   const forwardedStatusColumn = COL_N_FORWARDING_STATUS;
-  const acNo = row[COL_A_AC_NO]; // ADD THIS if it's missing
   const jobTitle = row[COL_A_JOB_TITLE]; // ADD THIS if it's missing
   const department = row[COL_A_DEPARTMENT]; // ADD THIS if it's missing
 

@@ -1,8 +1,8 @@
-// Modify the scriptUrl when creating a new copy of the sheet
+// Approval Link base on Request ID - Modify the scriptUrl when creating a new copy of the sheet
 function createApprovalUrl(row, action) {
   const scriptUrl =
     "https://script.google.com/macros/s/{change_the_app_id}/dev";
-  return `${scriptUrl}?row=${row}&action=${action}`;
+  return `${scriptUrl}?id=${encodeURIComponent(requestId)}&action=${action}`;
 }
 
 /**
@@ -10,8 +10,44 @@ function createApprovalUrl(row, action) {
  */
 
 // Get Sheet URL dynamically
-const sheet = SpreadsheetApp.getActiveSpreadsheet();
-const SHEET_URL = sheet.getUrl();
+const ACTIVE_SHEET = SpreadsheetApp.getActiveSpreadsheet();
+const SHEET_URL = ACTIVE_SHEET.getUrl();
+const SHEET_NAME = ACTIVE_SHEET.getName();
+
+// Extract year from sheet name (e.g., "Leave Request Records 2026" -> 2026)
+function getYearFromSheetName() {
+  const yearMatch = SHEET_NAME.match(/\d{4}/);
+  if (!yearMatch) {
+    throw new Error(
+      "Sheet name must contain a 4-digit year (e.g., 'Leave Request Records 2026')"
+    );
+  }
+  return parseInt(yearMatch[0]);
+}
+
+const SHEET_YEAR = getYearFromSheetName();
+
+// Covered period configuration
+// SHEET_YEAR represents the END of the cycle (Dec 25, 2026)
+// Cycle starts Dec 26 of previous year (Dec 26, 2025)
+const cycleStartYear = SHEET_YEAR - 1;
+const cycleEndYear = SHEET_YEAR;
+
+const PERIOD_ALLOWED_START_DATE = new Date(cycleStartYear, 11, 26); // Dec 26 - Previous Year
+const PERIOD_ALLOWED_END_DATE = new Date(cycleEndYear, 11, 25); // Dec 25 - Current Year
+
+const MAIN_LEAVE_BALANCE_CHECK = ["Vacation Leave", "Sick Leave", "Other"];
+const OTHER_LEAVE_TYPES_WITH_BALANCE = [
+  "Bereavement Leave",
+  "Paternity Leave",
+  "Maternity Leave",
+];
+const OTHER_LEAVE_TYPES_WITHOUT_BALANCE = [
+  "Half-day",
+  "Undertime",
+  "Unpaid Leave",
+];
+const VLSL_ALLOWED_MAIN_TYPES = ["Vacation Leave", "Sick Leave"];
 
 // Sheet name configuration
 const ALL_RECORDS = "All Records";
@@ -20,7 +56,9 @@ const OTHER_LEAVE_BALANCES = "Other Leave Balances";
 const RBA_LEAVE_BALANCES = "RBA Leave Balances";
 const APPROVED_PAID_LEAVES = "Approved Paid Leaves";
 const APPROVED_UNPAID_LEAVES = "Approved Unpaid Leaves";
-const REJECTED_LEAVE_APPLICATIONS = "Rejected Leave Applications";
+const REJECTED_LEAVE_APPLICATIONS = "Rejected Leaves";
+const CANCELLED_LEAVE_APPLICATIONS = "Cancelled Leaves";
+const AUTOMATICALLY_REJECTED_LEAVES = "Automatically Rejected Leaves";
 
 // Email configuration
 const TEST_ACCOUNTING_EMAIL = "example@gmail.com";
@@ -124,29 +162,6 @@ const A_REMAINING_PL = 5;
 const A_USED_ML = 6;
 const A_REMAINING_ML = 7;
 
-// Covered period configuration
-// Date range configuration - automatically updates based on current date
-const today = new Date();
-const currentYear = today.getFullYear();
-
-// Check if we're currently in the period from Dec 26 onwards
-const dec26ThisYear = new Date(currentYear, 11, 26); // Dec 26 of current year
-
-let cycleStartYear, cycleEndYear;
-
-if (today >= dec26ThisYear) {
-  // We're after Dec 26 this year, so new cycle starts this year
-  cycleStartYear = currentYear;
-  cycleEndYear = currentYear + 1;
-} else {
-  // We're before Dec 26 this year, so cycle started last year
-  cycleStartYear = currentYear - 1;
-  cycleEndYear = currentYear;
-}
-
-const PERIOD_ALLOWED_START_DATE = new Date(cycleStartYear, 11, 26); // Dec 26 - Previous Year
-const PERIOD_ALLOWED_END_DATE = new Date(cycleEndYear, 11, 25); // Dec 25 - Current Year
-
 const DEBUG_MODE = false;
 
 function debugLog(message) {
@@ -244,6 +259,164 @@ function getAttachmentBlobs(employeeAttachments) {
 function extractDriveFileId(url) {
   const match = url.match(/[-\w]{25,}/); // Extracts the file ID from the Google Drive URL
   return match ? match[0] : null;
+}
+
+// Dropdown main status
+function setupStatusDropdown() {
+  const sheet = ACTIVE_SHEET.getSheetByName(ALL_RECORDS);
+  const lastRow = sheet.getLastRow();
+
+  // Define dropdown options
+  const statusOptions = [
+    "Approved",
+    "Rejected",
+    "Cancelled",
+    "Automatically Rejected",
+  ];
+
+  // Create data validation rule
+  const rule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(statusOptions, true)
+    .setAllowInvalid(false)
+    .build();
+
+  // Apply to the Status column (starting from row 2 to skip header)
+  if (lastRow > 1) {
+    const range = sheet.getRange(2, COL_N_MAIN_STATUS, lastRow - 1, 1);
+    range.setDataValidation(rule);
+  }
+}
+
+// Handle manual update when status change in All Records
+function handleManualStatusChange(row, newStatus, requestId) {
+  const sheet = ACTIVE_SHEET.getSheetByName(ALL_RECORDS);
+
+  // Get employee data
+  const employeeEmail = sheet.getRange(row, COL_N_EMAIL_ADDRESS).getValue();
+  const employeeName = sheet.getRange(row, COL_N_FULL_NAME).getValue();
+  const jobTitle = sheet.getRange(row, COL_N_JOB_TITLE).getValue();
+  const department = sheet.getRange(row, COL_N_DEPARTMENT).getValue();
+  const leaveType = sheet.getRange(row, COL_N_MAIN_LEAVE).getValue();
+  const subLeaveType = sheet.getRange(row, COL_N_SUB_LEAVE).getValue();
+  const leaveStartDate = sheet.getRange(row, COL_N_START_DATE).getValue();
+  const leaveEndDate = sheet.getRange(row, COL_N_END_DATE).getValue();
+  const noOfDaysOrHours = sheet.getRange(row, COL_N_LEAVE_DURATION).getValue();
+  const employeeReason = sheet.getRange(row, COL_N_REASON).getValue();
+  const employeeAttachments = sheet.getRange(row, COL_N_ATTACHMENT).getValue();
+  const supervisorEmail = sheet.getRange(row, COL_N_APPROVER).getValue();
+  const acNo = sheet.getRange(row, COL_N_AC_NO).getValue();
+
+  debugLog(`Manual status change: ${newStatus} for Request ID: ${requestId}`);
+
+  const requestLeaveData = {
+    employeeEmail: employeeEmail,
+    employeeName: employeeName,
+    jobTitle: jobTitle,
+    department: department,
+    leaveType: leaveType,
+    subLeaveType: subLeaveType,
+    startDate: leaveStartDate,
+    endDate: leaveEndDate,
+    leaveHoursDay: noOfDaysOrHours,
+    employeeReason: employeeReason,
+    employeeAttachments: employeeAttachments,
+    supervisorEmail: supervisorEmail,
+    acNo: acNo,
+    requestId: requestId,
+  };
+
+  // Process based on status
+  if (newStatus === "Cancelled") {
+    sheet.getRange(row, COL_N_FORWARDING_STATUS).setValue("Not Forwarded");
+
+    // Remove from other categorization sheets
+    removeFromCategorySheets(requestId);
+
+    // Add to Cancelled Leaves sheet
+    copyToCancelledLeaves(requestLeaveData);
+
+    debugLog(`Leave request ${requestId} moved to Cancelled Leaves`);
+  } else if (newStatus === "Approved") {
+    sheet.getRange(row, COL_N_FORWARDING_STATUS).setValue("");
+
+    // Update leave balances
+    updateLeaveBalances();
+
+    // Categorize based on leave type and sub-type
+    if (
+      (leaveType === "Vacation Leave" && subLeaveType === "Unexcused") ||
+      (leaveType === "Sick Leave" && subLeaveType === "Unexcused") ||
+      (leaveType === "Vacation Leave" && subLeaveType === "VL/SL") ||
+      (leaveType === "Sick Leave" && subLeaveType === "VL/SL") ||
+      (leaveType === "Other" && subLeaveType === "Maternity Leave") ||
+      (leaveType === "Other" && subLeaveType === "Paternity Leave") ||
+      (leaveType === "Other" && subLeaveType === "Bereavement Leave") ||
+      (leaveType === "Vacation Leave" && subLeaveType === "Emergency Leave") ||
+      (leaveType === "Sick Leave" && subLeaveType === "Emergency Leave")
+    ) {
+      // Remove from other sheets first
+      removeFromCategorySheets(requestId);
+      // Add to Approved Paid Leaves
+      copyToApprovedPaidLeaves(requestLeaveData);
+    } else if (
+      (leaveType === "Other" && subLeaveType === "Unexcused") ||
+      (leaveType === "Other" && subLeaveType === "Emergency Leave") ||
+      subLeaveType === "Unpaid Leave" ||
+      subLeaveType === "Half-day" ||
+      subLeaveType === "Undertime"
+    ) {
+      // Remove from other sheets first
+      removeFromCategorySheets(requestId);
+      // Add to Approved Unpaid Leaves
+      copyToApprovedUnpaidLeaves(requestLeaveData);
+    }
+
+    debugLog(`Leave request ${requestId} approved and categorized`);
+  } else if (newStatus === "Rejected") {
+    sheet.getRange(row, COL_N_FORWARDING_STATUS).setValue("Not Forwarded");
+
+    // Remove from other categorization sheets
+    removeFromCategorySheets(requestId);
+
+    // Add to Rejected Leaves sheet
+    copyToRejectedLeaves(requestLeaveData);
+
+    debugLog(`Leave request ${requestId} moved to Rejected Leaves`);
+  }
+}
+
+// Handle checking ID from category and remove
+function removeFromCategorySheets(requestId) {
+  const ss = ACTIVE_SHEET;
+  const sheetsToCheck = [
+    APPROVED_PAID_LEAVES,
+    APPROVED_UNPAID_LEAVES,
+    REJECTED_LEAVE_APPLICATIONS,
+    CANCELLED_LEAVE_APPLICATIONS,
+  ];
+
+  sheetsToCheck.forEach(function (sheetName) {
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet) return;
+
+    const data = sheet.getDataRange().getValues();
+
+    // Find and delete the row with matching requestId
+    // Assuming Request ID is in the last column or specific column
+    for (let i = data.length - 1; i >= 1; i--) {
+      // Start from bottom to avoid index issues
+      // Adjust the column index based on where Request ID is stored in your category sheets
+      const rowRequestId = data[i][data[i].length - 1]; // Assuming last column
+
+      if (rowRequestId === requestId) {
+        sheet.deleteRow(i + 1);
+        debugLog(
+          `Removed Request ID ${requestId} from ${sheetName} at row ${i + 1}`
+        );
+        break; // Exit after finding and deleting
+      }
+    }
+  });
 }
 
 function parseSheetDate(sheetDate) {

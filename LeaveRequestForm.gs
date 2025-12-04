@@ -1,9 +1,14 @@
+// ============================================
+// Edit action - automatically update for certain condition
+// ============================================
 function onEdit(e) {
   const sheet = e.source.getActiveSheet();
   const sheetName = sheet.getName();
   const editedColumn = e.range.getColumn();
+  const editedRow = e.range.getRow();
+  const ss = ACTIVE_SHEET;
 
-  const updateNeeded =
+  const leaveBalanceUpdate =
     sheetName === ALL_RECORDS &&
     [
       COL_N_EMAIL_ADDRESS,
@@ -14,15 +19,105 @@ function onEdit(e) {
       COL_N_LEAVE_DURATION,
       COL_N_MAIN_STATUS,
     ].includes(editedColumn);
+  const manualUpdate =
+    sheetName === ALL_RECORDS &&
+    editedColumn === COL_N_MAIN_STATUS &&
+    editedRow > 1;
 
-  if (updateNeeded) {
-    updateLeaveBalances();
+  if (manualUpdate) {
+    const newStatus = e.range.getValue();
+    const requestId = sheet.getRange(editedRow, COL_N_REQUEST_ID).getValue();
+
+    // Only process if there's a valid request ID and status changed
+    if (requestId && newStatus) {
+      // Show processing toast based on status
+      let processingMessage = "";
+      if (newStatus === "Cancelled") {
+        processingMessage = "Processing cancellation...";
+      } else if (newStatus === "Approved") {
+        processingMessage = "Processing approval...";
+      } else if (newStatus === "Rejected") {
+        processingMessage = "Processing rejection...";
+      }
+
+      if (processingMessage) {
+        ss.toast(processingMessage, "Status Update", -1);
+
+        try {
+          handleManualStatusChange(editedRow, newStatus, requestId);
+
+          // Show success toast based on status
+          let successMessage = "";
+          if (newStatus === "Cancelled") {
+            successMessage =
+              "Leave request successfully cancelled and moved to Cancelled Leaves";
+          } else if (newStatus === "Approved") {
+            successMessage =
+              "Leave request successfully approved and categorized";
+          } else if (newStatus === "Rejected") {
+            successMessage =
+              "Leave request successfully rejected and moved to Rejected Leaves";
+          }
+
+          ss.toast(successMessage, "Success", 5);
+        } catch (error) {
+          // Show error toast
+          ss.toast(
+            "Error processing status change: " + error.message,
+            "Error",
+            10
+          );
+          debugLog("Error in onEdit status change: " + error.message);
+        }
+      }
+    }
+  }
+
+  if (leaveBalanceUpdate) {
+    // Get the leave type and sub-type to check if balance update is needed
+    const leaveType = sheet.getRange(editedRow, COL_N_MAIN_LEAVE).getValue();
+    const subLeaveType = sheet.getRange(editedRow, COL_N_SUB_LEAVE).getValue();
+    const status = sheet.getRange(editedRow, COL_N_MAIN_STATUS).getValue();
+
+    // Only show toast for leaves that affect balances (Approved Paid leaves)
+    const affectsBalance =
+      status === "Approved" &&
+      ((leaveType === "Vacation Leave" && subLeaveType === "VL/SL") ||
+        (leaveType === "Sick Leave" && subLeaveType === "VL/SL") ||
+        (leaveType === "Vacation Leave" && subLeaveType === "Unexcused") ||
+        (leaveType === "Sick Leave" && subLeaveType === "Unexcused") ||
+        (leaveType === "Sick Leave" && subLeaveType === "Emergency Leave") ||
+        (leaveType === "Vacation Leave" &&
+          subLeaveType === "Emergency Leave") ||
+        (leaveType === "Other" && subLeaveType === "Bereavement Leave") ||
+        (leaveType === "Other" && subLeaveType === "Paternity Leave") ||
+        (leaveType === "Other" && subLeaveType === "Maternity Leave"));
+
+    if (affectsBalance) {
+      // Show processing toast only for approved paid leaves
+      ss.toast("Updating leave balances...", "Processing", -1);
+    }
+
+    try {
+      updateLeaveBalances();
+
+      if (affectsBalance) {
+        // Show success toast only for approved paid leaves
+        ss.toast("Leave balances updated successfully", "Success", 3);
+      }
+    } catch (error) {
+      // Always show error toast if update fails
+      ss.toast("Error updating leave balances: " + error.message, "Error", 10);
+      debugLog("Error updating leave balances: " + error.message);
+    }
   }
 }
 
+// ============================================
 // Form Submission
+// ============================================
 function onFormSubmit(e) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = ACTIVE_SHEET;
   const sheet = ss.getSheetByName(ALL_RECORDS);
   const balancesSheet = ss.getSheetByName(LEAVE_BALANCES);
   const balancesData = balancesSheet.getDataRange().getValues();
@@ -56,6 +151,20 @@ function onFormSubmit(e) {
     );
   }
 
+  // Add dropdown to the new row's Status column
+  const statusOptions = [
+    "Approved",
+    "Rejected",
+    "Cancelled",
+    "Automatically Rejected",
+  ];
+  const rule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(statusOptions, true)
+    .setAllowInvalid(false)
+    .build();
+
+  sheet.getRange(lastRow, COL_N_MAIN_STATUS).setDataValidation(rule);
+
   const employeeEmail = row[COL_A_EMAIL_ADDRESS];
   const employeeName = row[COL_A_FULL_NAME];
   let employeeFormatName = formatName(employeeName);
@@ -70,10 +179,30 @@ function onFormSubmit(e) {
   const supervisorEmail = row[COL_A_APPROVER]?.trim(); // Ensure it exists and remove extra spaces
   const statusColumn = COL_N_MAIN_STATUS; // Change this based on your Google Sheet column index for "Status"
   const forwardedStatusColumn = COL_N_FORWARDING_STATUS;
+  const acNo = row[COL_A_AC_NO]; // ADD THIS if it's missing
+  const jobTitle = row[COL_A_JOB_TITLE]; // ADD THIS if it's missing
+  const department = row[COL_A_DEPARTMENT]; // ADD THIS if it's missing
+
+  const requestLeaveData = {
+    employeeEmail: employeeEmail,
+    employeeName: employeeName,
+    jobTitle: jobTitle,
+    department: department,
+    leaveType: leaveType,
+    subLeaveType: subLeaveType,
+    startDate: leaveStartDate,
+    endDate: leaveEndDate,
+    leaveHoursDay: leaveHoursDay,
+    employeeReason: employeeReason,
+    employeeAttachments: employeeAttachments,
+    supervisorEmail: supervisorEmail,
+    acNo: acNo,
+    requestId: requestId,
+  };
 
   // action link - will call on the createApprovalUrl function
-  const approvalUrl = createApprovalUrl(lastRow, "approve");
-  const rejectionUrl = createApprovalUrl(lastRow, "reject");
+  const approvalUrl = createApprovalUrl(requestId, "approve");
+  const rejectionUrl = createApprovalUrl(requestId, "reject");
 
   const formattedStartDate = formatDate(leaveStartDate);
   const formattedEndDate = formatDate(leaveEndDate);
@@ -97,7 +226,9 @@ function onFormSubmit(e) {
   // Convert leave input into numeric value
   let parsedLeaveHoursDay = parseLeaveHours(leaveHoursDay);
 
+  // ============================================
   // Check if employee email exists in "Leave Balances" sheet
+  // ============================================
   const emailExists = balancesData.some(
     (row) =>
       row[A_BALANCE_EMAIL] === employeeEmail ||
@@ -112,6 +243,11 @@ function onFormSubmit(e) {
     // Update "Status" column in "All Records"
     sheet.getRange(lastRow, statusColumn).setValue("Automatically Rejected");
     sheet.getRange(lastRow, forwardedStatusColumn).setValue("Not Forwarded");
+
+    copyToAutomaticallyRejectedLeaves(
+      requestLeaveData,
+      "Invalid Email Address"
+    );
 
     // Send rejection email
     const templateData = {
@@ -149,7 +285,9 @@ function onFormSubmit(e) {
   debugLog(`Allowed Start: ${allowedStart}`);
   debugLog(`Allowed End: ${allowedEnd}`);
 
+  // ============================================
   // Check if the leave request is outside the allowed range
+  // ============================================
   if (
     !isExemptedEmail(employeeEmail) &&
     !isParaplannerEmail(employeeEmail) &&
@@ -164,6 +302,12 @@ function onFormSubmit(e) {
 
     sheet.getRange(lastRow, statusColumn).setValue("Automatically Rejected");
     sheet.getRange(lastRow, forwardedStatusColumn).setValue("Not Forwarded");
+
+    //Copy to Automatically Rejected Leaves with Reason
+    copyToAutomaticallyRejectedLeaves(
+      requestLeaveData,
+      "Outside Allowed Leave Period"
+    );
 
     // Send rejection email to employee
     const templateData = {
@@ -213,10 +357,11 @@ function onFormSubmit(e) {
     return; // Stop further execution
   }
 
-  // Leave types that require balance checking
-  const balanceCheckedLeaves = ["Vacation Leave", "Sick Leave", "Other"];
-
+  // ============================================
   // Only check balance for certain leave types
+  // ============================================
+  const balanceCheckedLeaves = MAIN_LEAVE_BALANCE_CHECK;
+
   if (balanceCheckedLeaves.includes(leaveType)) {
     let remainingSL = null;
     let remainingVL = null;
@@ -235,10 +380,7 @@ function onFormSubmit(e) {
 
     if (isExemptedEmail(employeeEmail)) {
       // Use "RBA Leave Balances" sheet for exempted emails
-      const rbaBalancesSheet =
-        SpreadsheetApp.getActiveSpreadsheet().getSheetByName(
-          RBA_LEAVE_BALANCES
-        );
+      const rbaBalancesSheet = ACTIVE_SHEET.getSheetByName(RBA_LEAVE_BALANCES);
       const rbaBalancesData = rbaBalancesSheet.getDataRange().getValues();
 
       // Find the employee in the RBA Leave Balances sheet
@@ -407,7 +549,9 @@ function onFormSubmit(e) {
 
     let insufficientBalance = false;
 
+    // ============================================
     // Additional validation for Unexcused Leave
+    // ============================================
     if (subLeaveType === "Unexcused") {
       // If "Other" is selected but employee has available VL or SL balance
       if (
@@ -469,7 +613,9 @@ function onFormSubmit(e) {
       }
     }
 
+    // ============================================
     // Additional validation for Emergency Leave
+    // ============================================
     if (subLeaveType === "Emergency Leave") {
       // If "Other" is selected but employee has available VL or SL balance
       if (
@@ -561,7 +707,9 @@ function onFormSubmit(e) {
       }
     }
 
+    // ============================================
     // Check if leave request exceeds available balance
+    // ============================================
     if (insufficientBalance) {
       debugLog(
         `Leave request automatically rejected for ${employeeFormatName} due to insufficient balance.`
@@ -570,6 +718,46 @@ function onFormSubmit(e) {
       // Update Status column
       sheet.getRange(lastRow, statusColumn).setValue("Automatically Rejected");
       sheet.getRange(lastRow, forwardedStatusColumn).setValue("Not Forwarded");
+
+      let balanceRejectionReason = "Insufficient Leave Balance";
+      if (
+        (subLeaveType === "Unexcused" || subLeaveType === "Emergency Leave") &&
+        (leaveType === "Vacation Leave" || leaveType === "Sick Leave") &&
+        (remainingVL === null || remainingVL === 0) &&
+        (remainingSL === null || remainingSL === 0)
+      ) {
+        balanceRejectionReason = "No Remaining Leave Balance";
+      }
+      // Used "Other" but has available balance
+      else if (
+        (subLeaveType === "Unexcused" && leaveType === "Other") ||
+        (subLeaveType === "Emergency Leave" && leaveType === "Other")
+      ) {
+        balanceRejectionReason = "Incorrect Leave Type Selection";
+      }
+      // Wrong main leave type (has primary balance but used secondary)
+      else if (
+        (subLeaveType === "Unexcused" && leaveType === "Sick Leave") ||
+        (subLeaveType === "Emergency Leave" && leaveType === "Vacation Leave")
+      ) {
+        balanceRejectionReason = "Wrong Main Leave Type";
+      }
+      // Primary balance is 0 but secondary has balance
+      else if (
+        (subLeaveType === "Unexcused" &&
+          leaveType === "Vacation Leave" &&
+          (remainingVL === null || remainingVL === 0)) ||
+        (subLeaveType === "Emergency Leave" &&
+          leaveType === "Sick Leave" &&
+          (remainingSL === null || remainingSL === 0))
+      ) {
+        balanceRejectionReason = "Wrong Main Leave Type";
+      }
+
+      copyToAutomaticallyRejectedLeaves(
+        requestLeaveData,
+        balanceRejectionReason
+      );
 
       // Send Rejection Email
       const templateData = {
@@ -843,12 +1031,10 @@ function onFormSubmit(e) {
     }
   }
 
-  // Automatic rejection for Other Leaves with wrong main leave type
-  const otherLeaveTypes = [
-    "Bereavement Leave",
-    "Parental Leave",
-    "Maternal Leave",
-  ];
+  // ============================================
+  // AUTOMATIC REJECTION: Other Leaves with wrong main leave type
+  // ============================================
+  const otherLeaveTypes = OTHER_LEAVE_TYPES_WITH_BALANCE;
 
   if (otherLeaveTypes.includes(subLeaveType)) {
     // Check if main leave type is NOT "Other"
@@ -859,6 +1045,11 @@ function onFormSubmit(e) {
 
       sheet.getRange(lastRow, statusColumn).setValue("Automatically Rejected");
       sheet.getRange(lastRow, forwardedStatusColumn).setValue("Not Forwarded");
+
+      copyToAutomaticallyRejectedLeaves(
+        requestLeaveData,
+        "Wrong Main Leave Type"
+      );
 
       // Send rejection email
       const templateData = {
@@ -913,9 +1104,7 @@ function onFormSubmit(e) {
 
     // Check balance for Other Leaves (Bereavement, Parental, Maternal)
     const otherLeaveBalancesSheet =
-      SpreadsheetApp.getActiveSpreadsheet().getSheetByName(
-        OTHER_LEAVE_BALANCES
-      );
+      ACTIVE_SHEET.getSheetByName(OTHER_LEAVE_BALANCES);
     if (!otherLeaveBalancesSheet) {
       Logger.log("Error: 'Other Leave Balances' sheet not found.");
       return;
@@ -933,12 +1122,12 @@ function onFormSubmit(e) {
         if (subLeaveType === "Bereavement Leave") {
           remainingBalance = otherBalancesData[i][A_REMAINING_BL];
           leaveTypeName = "Bereavement Leave";
-        } else if (subLeaveType === "Parental Leave") {
+        } else if (subLeaveType === "Paternity Leave") {
           remainingBalance = otherBalancesData[i][A_REMAINING_PL];
-          leaveTypeName = "Parental Leave";
-        } else if (subLeaveType === "Maternal Leave") {
+          leaveTypeName = "Paternity Leave";
+        } else if (subLeaveType === "Maternity Leave") {
           remainingBalance = otherBalancesData[i][A_REMAINING_ML];
-          leaveTypeName = "Maternal Leave";
+          leaveTypeName = "Maternity Leave";
         }
         break;
       }
@@ -952,6 +1141,11 @@ function onFormSubmit(e) {
 
       sheet.getRange(lastRow, statusColumn).setValue("Automatically Rejected");
       sheet.getRange(lastRow, forwardedStatusColumn).setValue("Not Forwarded");
+
+      copyToAutomaticallyRejectedLeaves(
+        requestLeaveData,
+        `Insufficient ${leaveTypeName} Balance`
+      );
 
       // Send rejection email
       const templateData = {
@@ -1003,7 +1197,154 @@ function onFormSubmit(e) {
     }
   }
 
+  // ============================================
+  // AUTOMATIC REJECTION: Wrong Main Leave Type for Other Leaves (WITHOUT balance checking)
+  // ============================================
+  const otherLeaveTypesWithoutBalance = OTHER_LEAVE_TYPES_WITHOUT_BALANCE;
+
+  if (otherLeaveTypesWithoutBalance.includes(subLeaveType)) {
+    // Check if main leave type is NOT "Other"
+    if (leaveType !== "Other") {
+      debugLog(
+        `Leave request automatically rejected for ${employeeFormatName} - ${subLeaveType} must use "Other" as main leave type.`
+      );
+
+      sheet.getRange(lastRow, statusColumn).setValue("Automatically Rejected");
+      sheet.getRange(lastRow, forwardedStatusColumn).setValue("Not Forwarded");
+
+      copyToAutomaticallyRejectedLeaves(
+        requestLeaveData,
+        "Wrong Main Leave Type"
+      );
+
+      // Send rejection email
+      const templateData = {
+        receiverName: employeeFormatName,
+        bodyMessage: `
+        <p>Your leave request has been <strong>automatically rejected</strong> because you selected <strong>${subLeaveType}</strong> under <strong>${leaveType}</strong>.</p>
+        <div class="info-card">
+            <div class="info-card-title">Leave Details</div>
+            <div class="info-card-body">
+                <table class="info-table" cellpadding="0" cellspacing="0">
+                    <tr>
+                        <td class="info-label">Main Leave Type:</td>
+                        <td class="info-value">${leaveType}</td>
+                    </tr>
+                    <tr class="last-row">
+                        <td class="info-label">Leave Sub-Category:</td>
+                        <td class="info-value">${subLeaveType}</td>
+                    </tr>
+                    <tr class="card-note">
+                      <td colspan="2">
+                        <p>${subLeaveType} must always be filed under the "Other" main leave type.</p>
+                      </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        <div class="external-note">
+          <p style="margin-bottom: 5px;"><strong>Steps to resubmit:</strong></p>
+          <ul style="margin-top: 0;">
+            <li>Select <strong>Other</strong> as Main Leave Type</li>
+            <li>Keep <strong>${subLeaveType}</strong> as Sub-Category</li>
+          </ul>
+        </div>
+        <p>Please resubmit your request with the correct leave type. Thank you.</p>
+        `,
+      };
+
+      try {
+        sendTemplatedEmail(
+          TEST_DEV_ACC,
+          "Leave Request Automatically Rejected - Wrong Main Leave Type",
+          "TemplateGeneralEmailBody",
+          templateData,
+          [],
+          true
+        );
+      } catch (error) {
+        Logger.log("Failed to send rejection email: " + error.message);
+      }
+      return; // Stop further execution
+    }
+
+    // No balance checking needed - just continue to approval process
+    debugLog(`${subLeaveType} validated - no balance check required.`);
+  }
+
+  // ============================================
+  // AUTOMATIC REJECTION: VL/SL must use Vacation Leave or Sick Leave as main type
+  // ============================================
+  if (subLeaveType === "VL/SL") {
+    // Check if main leave type is NOT "Vacation Leave" or "Sick Leave"
+    if (leaveType !== "Vacation Leave" && leaveType !== "Sick Leave") {
+      debugLog(
+        `Leave request automatically rejected for ${employeeFormatName} - VL/SL must use "Vacation Leave" or "Sick Leave" as main leave type.`
+      );
+
+      sheet.getRange(lastRow, statusColumn).setValue("Automatically Rejected");
+      sheet.getRange(lastRow, forwardedStatusColumn).setValue("Not Forwarded");
+
+      copyToAutomaticallyRejectedLeaves(
+        requestLeaveData,
+        "Wrong Main Leave Type"
+      );
+
+      // Send rejection email
+      const templateData = {
+        receiverName: employeeFormatName,
+        bodyMessage: `
+        <p>Your leave request has been <strong>automatically rejected</strong> because you selected <strong>VL/SL</strong> under <strong>${leaveType}</strong>.</p>
+        <div class="info-card">
+            <div class="info-card-title">Leave Details</div>
+            <div class="info-card-body">
+                <table class="info-table" cellpadding="0" cellspacing="0">
+                    <tr>
+                        <td class="info-label">Main Leave Type:</td>
+                        <td class="info-value">${leaveType}</td>
+                    </tr>
+                    <tr class="last-row">
+                        <td class="info-label">Leave Sub-Category:</td>
+                        <td class="info-value">${subLeaveType}</td>
+                    </tr>
+                    <tr class="card-note">
+                      <td colspan="2">
+                        <p>When using the VL/SL sub-category, the main leave type must be either 'Vacation Leave' or 'Sick Leave'.</p>
+                      </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        <div class="external-note">
+          <p style="margin-bottom: 5px;"><strong>Steps to resubmit:</strong></p>
+          <ul style="margin-top: 0;">
+            <li>Select <strong>Vacation Leave</strong> or <strong>Sick Leave</strong> as Main Leave Type</li>
+            <li>Keep <strong>VL/SL</strong> as Sub-Category</li>
+          </ul>
+        </div>
+        <p>Please resubmit your request with the correct leave type. Thank you.</p>
+        `,
+      };
+
+      try {
+        sendTemplatedEmail(
+          TEST_DEV_ACC,
+          "Leave Request Automatically Rejected - Wrong Main Leave Type",
+          "TemplateGeneralEmailBody",
+          templateData,
+          [],
+          true
+        );
+      } catch (error) {
+        Logger.log("Failed to send rejection email: " + error.message);
+      }
+      return; // Stop further execution
+    }
+  }
+
+  // ============================================
   // Proceed with approval email if leave request is valid
+  // ============================================
   const templateData = {
     bodyMessage:
       "Kindly review the leave request and take the necessary action at your earliest convenience. Please let the employee know if you need any further details. Thank you!",
@@ -1032,28 +1373,110 @@ function onFormSubmit(e) {
   );
 }
 
+// ============================================
 // Get Data
+// ============================================
 function doGet(e) {
   // Log the entire e object to see its structure
   Logger.log("Received e: " + JSON.stringify(e));
 
-  if (!e || !e.parameter || !e.parameter.row || !e.parameter.action) {
-    Logger.log("Error: Missing parameters.");
+  if (!e || !e.parameter || !e.parameter.id || !e.parameter.action) {
+    debugLog("Error: Missing parameters.");
     return HtmlService.createHtmlOutput("Error: Missing parameters.");
   }
 
-  const row = parseInt(e.parameter.row, 10); // Ensure row is a number
+  const requestId = e.parameter.id;
   const action = e.parameter.action;
 
   // Log the parameters for debugging
-  debugLog(`Received row: ${row}`);
+  debugLog(`Received Request ID: ${requestId}`);
   debugLog(`Received action: ${action}`);
 
-  if (!row || isNaN(row) || row < 2) {
-    return HtmlService.createHtmlOutput("Error: Invalid row parameter.");
+  if (!requestId) {
+    return HtmlService.createHtmlOutput("Error: Invalid request ID parameter.");
   }
 
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  const sheet = ACTIVE_SHEET.getSheetByName(ALL_RECORDS);
+  if (!sheet) {
+    debugLog("Error: Sheet not found.");
+    return HtmlService.createHtmlOutput("Error: Sheet not found.");
+  }
+
+  // Find the row with matching requestId
+  const dataRange = sheet.getDataRange();
+  const allData = dataRange.getValues();
+  let row = -1;
+
+  let status = "";
+  let existingStatus = null;
+  let forwardingStatus = null;
+  let message = "";
+
+  for (let i = 1; i < allData.length; i++) {
+    // Start from 1 to skip header
+    if (allData[i][COL_A_REQUEST_ID] === requestId) {
+      row = i + 1; // +1 because array is 0-indexed but sheets are 1-indexed
+      break;
+    }
+  }
+
+  if (row === -1) {
+    Logger.log(`Error: Request ID ${requestId} not found.`);
+    return HtmlService.createHtmlOutput("Error: Request not found.");
+  }
+
+  debugLog(`Found Request ID ${requestId} at row ${row}`);
+
+  // ============================================
+  // CHECK FOR DUPLICATE ACTIONS FIRST
+  // ============================================
+  existingStatus = sheet.getRange(row, COL_N_MAIN_STATUS).getValue();
+  forwardingStatus = sheet.getRange(row, COL_N_FORWARDING_STATUS).getValue();
+
+  const isProcessed = existingStatus !== "";
+  const alreadyProcessed =
+    forwardingStatus === "Forwarded" || forwardingStatus === "Not Forwarded";
+
+  debugLog(
+    `Checking Row: ${row}, Status: ${existingStatus}, Forwarding: ${forwardingStatus}`
+  );
+
+  // ✅ Prevent duplicate actions
+  if (action === "forward" && isProcessed && alreadyProcessed) {
+    debugLog(`Leave already forwarded: ${forwardingStatus}`);
+    message = "This leave request has already been forwarded.";
+
+    const errorAlertTemplate =
+      HtmlService.createTemplateFromFile("TemplateAlertUrl");
+    errorAlertTemplate.alertType = "error";
+    errorAlertTemplate.header = "<p>Action Not Allowed</p>";
+    errorAlertTemplate.message = `<p>${message}</p>`;
+    errorAlertTemplate.requestId = requestId;
+
+    return HtmlService.createHtmlOutput(
+      errorAlertTemplate.evaluate().getContent()
+    );
+  }
+
+  if ((action === "approve" || action === "reject") && isProcessed) {
+    debugLog(`Leave already processed: ${existingStatus}`);
+    message = "This leave request has already been processed.";
+
+    const errorAlertTemplate =
+      HtmlService.createTemplateFromFile("TemplateAlertUrl");
+    errorAlertTemplate.alertType = "error";
+    errorAlertTemplate.header = "<p>Action Not Allowed</p>";
+    errorAlertTemplate.message = `<p>${message}</p>`;
+    errorAlertTemplate.requestId = requestId;
+
+    return HtmlService.createHtmlOutput(
+      errorAlertTemplate.evaluate().getContent()
+    );
+  }
+
+  // ============================================
+  // GET ALL DATA AFTER VALIDATION PASSES
+  // ============================================
   const timeStamp = sheet.getRange(row, COL_N_TIMESTAMP).getValue();
   const employeeEmail = sheet.getRange(row, COL_N_EMAIL_ADDRESS).getValue();
   const employeeName = sheet.getRange(row, COL_N_FULL_NAME).getValue();
@@ -1071,80 +1494,15 @@ function doGet(e) {
   const employeeAttachments = sheet.getRange(row, COL_N_ATTACHMENT).getValue();
   const supervisorEmail = sheet.getRange(row, COL_N_APPROVER).getValue();
   const supervisorName = getSupervisorName(supervisorEmail);
-
   const acNo = sheet.getRange(row, COL_N_AC_NO).getValue();
-  const requestId = sheet.getRange(row, COL_N_REQUEST_ID).getValue();
 
   const formattedStartDate = formatDate(leaveStartDate);
   const formattedEndDate = formatDate(leaveEndDate);
-
-  let status = "";
-  let existingStatus = null;
-  let forwardingStatus = null;
-  let message = "";
 
   // Log the retrieved values for debugging
   debugLog(`Employee email: ${employeeEmail}`);
   debugLog(`Leave start date: ${leaveStartDate}`);
   debugLog(`Leave end date: ${leaveEndDate}`);
-
-  const existingRecords = sheet.getDataRange().getValues().slice(1); // Skip header
-  const alreadyLogged = existingRecords.some((record, index) => {
-    if (index + 2 === row) {
-      // Adjust row index (Google Sheets starts at 1)
-      const existingStartDate = new Date(record[COL_A_START_DATE]);
-      const existingEndDate = new Date(record[COL_A_END_DATE]);
-      const parsedLeaveStartDate = new Date(leaveStartDate);
-      const parsedLeaveEndDate = new Date(leaveEndDate);
-      existingStatus = record[COL_A_MAIN_STATUS];
-      forwardingStatus = record[COL_A_FORWARDING_STATUS];
-
-      debugLog(
-        `Checking Row: ${row}, Status: ${existingStatus}, Forwarding: ${forwardingStatus}`
-      );
-
-      // ✅ Prevent duplicate forwarding if already "Forwarded"
-      if (
-        record[COL_A_EMAIL_ADDRESS] === employeeEmail &&
-        existingStartDate.toDateString() ===
-          parsedLeaveStartDate.toDateString() &&
-        existingEndDate.toDateString() === parsedLeaveEndDate.toDateString()
-      ) {
-        const isProcessed = existingStatus !== "";
-        const alreadyProcessed =
-          forwardingStatus === "Forwarded" ||
-          forwardingStatus === "Not Forwarded";
-
-        if (action === "forward" && isProcessed && alreadyProcessed) {
-          debugLog(`Leave already processed (Forwarded): ${forwardingStatus}`);
-          message = "This leave request has already been forwarded.";
-          return true;
-        }
-
-        if ((action === "approve" || action === "reject") && isProcessed) {
-          debugLog(
-            `Leave already processed and cannot be forwarded: ${existingStatus}`
-          );
-          message = "This leave request has already been processed.";
-          return true;
-        }
-      }
-    }
-    return false;
-  });
-
-  if (alreadyLogged) {
-    const errorAlertTemplate =
-      HtmlService.createTemplateFromFile("TemplateAlertUrl");
-    errorAlertTemplate.alertType = "error";
-    errorAlertTemplate.header = "<p>Action Not Allowed</p>";
-    errorAlertTemplate.message = `<p>${message}</p>`;
-    // errorAlertTemplate.requestId = requestId;
-
-    return HtmlService.createHtmlOutput(
-      errorAlertTemplate.evaluate().getContent()
-    );
-  }
 
   // Handle multiple attachments (Google Drive File ID or URL)
   const attachments = getAttachmentBlobs(employeeAttachments);
@@ -1167,6 +1525,9 @@ function doGet(e) {
     requestId: requestId,
   };
 
+  // ============================================
+  // PROCESS ACTIONS
+  // ============================================
   if (action === "approve") {
     sheet.getRange(row, COL_N_MAIN_STATUS).setValue("Approved");
 
@@ -1182,14 +1543,25 @@ function doGet(e) {
 
     if (isExemptedEmail(employeeEmail)) {
       // Use RBA Leave Balances for exempted emails
-      leaveBalancesSheet =
-        SpreadsheetApp.getActiveSpreadsheet().getSheetByName(
-          RBA_LEAVE_BALANCES
-        );
-      const leaveRecords = leaveBalancesSheet.getDataRange().getValues();
+      leaveBalancesSheet = ACTIVE_SHEET.getSheetByName(RBA_LEAVE_BALANCES);
+      if (!leaveBalancesSheet) {
+        debugLog("ERROR: RBA Leave Balances sheet not found");
+        return;
+      }
 
-      // Find the row of the employee in the "RBA Leave Balances" sheet
-      for (let i = 1; i < leaveRecords.length; i++) {
+      const lastRow = leaveBalancesSheet.getLastRow();
+      if (lastRow < 3) {
+        debugLog("ERROR: No data in RBA Leave Balances sheet");
+        return;
+      }
+
+      // Get data starting from row 3 (skip merged headers)
+      const leaveRecords = leaveBalancesSheet
+        .getRange(3, 1, lastRow - 2, leaveBalancesSheet.getLastColumn())
+        .getValues();
+
+      // Find the employee in the RBA Leave Balances sheet
+      for (let i = 0; i < leaveRecords.length; i++) {
         if (leaveRecords[i][A_BALANCE_EMAIL] === employeeEmail) {
           employeeLeaveBalance = leaveRecords[i];
           break;
@@ -1250,12 +1622,25 @@ function doGet(e) {
       `;
     } else {
       // Use regular Leave Balances for non-exempted emails
-      leaveBalancesSheet =
-        SpreadsheetApp.getActiveSpreadsheet().getSheetByName(LEAVE_BALANCES);
-      const leaveRecords = leaveBalancesSheet.getDataRange().getValues();
+      leaveBalancesSheet = ACTIVE_SHEET.getSheetByName(LEAVE_BALANCES);
+      if (!leaveBalancesSheet) {
+        debugLog("ERROR: Leave Balances sheet not found");
+        return;
+      }
 
-      // Find the row of the employee in the "Leave Balances" sheet
-      for (let i = 1; i < leaveRecords.length; i++) {
+      const lastRow = leaveBalancesSheet.getLastRow();
+      if (lastRow < 3) {
+        debugLog("ERROR: No data in Leave Balances sheet");
+        return;
+      }
+
+      // Get data starting from row 3 (skip merged headers)
+      const leaveRecords = leaveBalancesSheet
+        .getRange(3, 1, lastRow - 2, leaveBalancesSheet.getLastColumn())
+        .getValues();
+
+      // Now loop through the data
+      for (let i = 0; i < leaveRecords.length; i++) {
         if (leaveRecords[i][A_BALANCE_EMAIL] === employeeEmail) {
           employeeLeaveBalance = leaveRecords[i];
           break;
@@ -1330,7 +1715,7 @@ function doGet(e) {
           <p style="margin-bottom: 5px;">Note that <strong>emergency leave</strong>: </p>
           <ul style="margin-top: 0;">
           <li>Is deducted from your SL balance first</li>
-          <li>If there’s no remaining balance for SL, then it will be deducted from your VL</li>
+          <li>If there's no remaining balance for SL, then it will be deducted from your VL</li>
           </ul>
         </div>
         `;
@@ -1354,16 +1739,26 @@ function doGet(e) {
     if (
       leaveType === "Other" &&
       (subLeaveType === "Bereavement Leave" ||
-        subLeaveType === "Parental Leave" ||
-        subLeaveType === "Maternal Leave")
+        subLeaveType === "Paternity Leave" ||
+        subLeaveType === "Maternity Leave")
     ) {
       // Get Other Leave Balances sheet
       const otherLeaveBalancesSheet =
-        SpreadsheetApp.getActiveSpreadsheet().getSheetByName(
-          OTHER_LEAVE_BALANCES
-        );
+        ACTIVE_SHEET.getSheetByName(OTHER_LEAVE_BALANCES);
+
+      if (!otherLeaveBalancesSheet) {
+        debugLog("ERROR: Other Leave Balances sheet not found");
+        return;
+      }
+
+      const lastRow = otherLeaveBalancesSheet.getLastRow();
+      if (lastRow < 3) {
+        debugLog("ERROR: No data in Other Leave Balances sheet");
+        return;
+      }
+
       const otherLeaveRecords = otherLeaveBalancesSheet
-        .getDataRange()
+        .getRange(3, 1, lastRow - 2, otherLeaveBalancesSheet.getLastColumn())
         .getValues();
 
       let leaveUsed = 0;
@@ -1373,7 +1768,7 @@ function doGet(e) {
       let subHeaderColor = "";
 
       // Find the employee in the Other Leave Balances sheet
-      for (let i = 1; i < otherLeaveRecords.length; i++) {
+      for (let i = 0; i < otherLeaveRecords.length; i++) {
         if (otherLeaveRecords[i][A_BALANCE_EMAIL] === employeeEmail) {
           if (subLeaveType === "Bereavement Leave") {
             leaveUsed = otherLeaveRecords[i][A_USED_BL] || 0;
@@ -1381,16 +1776,16 @@ function doGet(e) {
             leaveTitle = "Bereavement Leave";
             headerColor = "#6B3410";
             subHeaderColor = "#D4A574";
-          } else if (subLeaveType === "Parental Leave") {
+          } else if (subLeaveType === "Paternity Leave") {
             leaveUsed = otherLeaveRecords[i][A_USED_PL] || 0;
             leaveRemaining = otherLeaveRecords[i][A_REMAINING_PL] || 0;
-            leaveTitle = "Parental Leave";
+            leaveTitle = "Paternity Leave";
             headerColor = "#38761D";
             subHeaderColor = "#93C47D";
-          } else if (subLeaveType === "Maternal Leave") {
+          } else if (subLeaveType === "Maternity Leave") {
             leaveUsed = otherLeaveRecords[i][A_USED_ML] || 0;
             leaveRemaining = otherLeaveRecords[i][A_REMAINING_ML] || 0;
-            leaveTitle = "Maternal Leave";
+            leaveTitle = "Maternity Leave";
             headerColor = "#741B47";
             subHeaderColor = "#C27BA0";
           }
@@ -1461,8 +1856,8 @@ function doGet(e) {
       (leaveType === "Sick Leave" && subLeaveType === "Unexcused") ||
       leaveType === "Vacation Leave" ||
       leaveType === "Sick Leave" ||
-      (leaveType === "Other" && subLeaveType === "Maternal Leave") ||
-      (leaveType === "Other" && subLeaveType === "Parental Leave") ||
+      (leaveType === "Other" && subLeaveType === "Maternity Leave") ||
+      (leaveType === "Other" && subLeaveType === "Paternity Leave") ||
       (leaveType === "Other" && subLeaveType === "Bereavement Leave") ||
       (leaveType === "Vacation Leave" && subLeaveType === "Emergency Leave") ||
       (leaveType === "Sick Leave" && subLeaveType === "Emergency Leave")
@@ -1483,7 +1878,7 @@ function doGet(e) {
     approvedAlertTemplate.alertType = "approve";
     approvedAlertTemplate.header = "<p>Leave Request Approved</p>";
     approvedAlertTemplate.message = `<p><strong>${employeeFormatName}</strong>'s leave request has been successfully approved.</p>`;
-    // approvedAlertTemplate.requestId = requestId;
+    approvedAlertTemplate.requestId = requestId;
 
     return HtmlService.createHtmlOutput(
       approvedAlertTemplate.evaluate().getContent()
@@ -1524,14 +1919,14 @@ function doGet(e) {
       false
     );
 
-    copyToRejectedLeaves(requestLeaveData); // Log the rejected leave to "Rejected Leave Applications" sheet
+    copyToRejectedLeaves(requestLeaveData); // Log the rejected leave to "Rejected Leaves" sheet
 
     const rejectAlertTemplate =
       HtmlService.createTemplateFromFile("TemplateAlertUrl");
     rejectAlertTemplate.alertType = "reject";
     rejectAlertTemplate.header = "<p>Leave Request Rejected</p>";
     rejectAlertTemplate.message = `<p><strong>${employeeFormatName}</strong>'s leave application has been successfully rejected.</p>`;
-    // rejectAlertTemplate.requestId = requestId;
+    rejectAlertTemplate.requestId = requestId;
 
     return HtmlService.createHtmlOutput(
       rejectAlertTemplate.evaluate().getContent()
@@ -1543,7 +1938,7 @@ function doGet(e) {
 
     // Email to accounting
     const templateDataAccounting = {
-      receiverName: "Hi",
+      receiverName: "Receiver Name",
       bodyMessage: `
       <p>Please note that ${employeeFormatName}'s ${leaveType} - ${subLeaveType} from <strong>${formattedStartDate} to ${formattedEndDate}</strong> has been <strong>approved</strong> by ${supervisorName}.</p>
       <p>Please update your records. Thanks!</p>
@@ -1562,7 +1957,7 @@ function doGet(e) {
 
     // Email to SB
     const templateDataSb = {
-      receiverName: "SB",
+      receiverName: "Receiver Name",
       bodyMessage: `
       <p>${employeeFormatName}'s ${leaveType} - ${subLeaveType} request for <strong>${formattedStartDate} to ${formattedEndDate}</strong> has been <strong>approved</strong> by ${supervisorName}.</p>
       <p>Please advise if there's anything specific you need during his/her absence.</p>
@@ -1595,7 +1990,7 @@ function doGet(e) {
     forwardAlertTemplate.alertType = "forward";
     forwardAlertTemplate.header = "<p>Leave Request Forwarded</p>";
     forwardAlertTemplate.message = `<p><strong>${employeeFormatName}</strong>'s leave application has been successfully forwarded.</p>`;
-    // forwardAlertTemplate.requestId = requestId;
+    forwardAlertTemplate.requestId = requestId;
 
     return HtmlService.createHtmlOutput(
       forwardAlertTemplate.evaluate().getContent()

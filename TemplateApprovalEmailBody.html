@@ -1,71 +1,71 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <base target="_top">
-    <style>
-      <?!= include('GlobalStyle'); ?>
-    </style>
-  </head>
-  <body>
-      <div class="email-container card-layout">
-          
-          <p>Hi,</p>
-          <p><?= bodyMessage ?></p>
-          
-          <div class="info-card">
-              <div class="info-card-title">Requesting Employee</div>
-              <div class="info-card-body">
-                  <table class="info-table" cellpadding="0" cellspacing="0">
-                      <tr>
-                          <td class="info-label">Name:</td>
-                          <td class="info-value"><?= receiverName ?></td>
-                      </tr>
-                      <tr class="last-row">
-                          <td class="info-label">Email Address:</td>
-                          <td class="info-value"><?= employeeEmail ?></td>
-                      </tr>
-                  </table>
-              </div>
-          </div>
-          
-          <div class="info-card">
-              <div class="info-card-title">Leave Details</div>
-              <div class="info-card-body">
-                  <table class="info-table" cellpadding="0" cellspacing="0">
-                      <tr>
-                          <td class="info-label">Main Leave Type:</td>
-                          <td class="info-value"><?= leaveType ?></td>
-                      </tr>
-                      <tr>
-                          <td class="info-label">Leave Sub-Category:</td>
-                          <td class="info-value"><?= subLeaveType ?></td>
-                      </tr>
-                      <tr>
-                          <td class="info-label">Start Date:</td>
-                          <td class="info-value"><?= formattedStartDate ?></td>
-                      </tr>
-                      <tr>
-                          <td class="info-label">End Date:</td>
-                          <td class="info-value"><?= formattedEndDate ?></td>
-                      </tr>
-                      <tr>
-                          <td class="info-label">Leave Duration:</td>
-                          <td class="info-value"><?= leaveHoursDay ?></td>
-                      </tr>
-                      <tr class="last-row">
-                          <td class="info-label">Reason:</td>
-                          <td class="info-value"><?= employeeReason ?></td>
-                      </tr>
-                  </table>
-              </div>
-          </div>
-          
-          <div class="action-buttons">
-              <a href="<?= approvalUrl ?>" class="btn btn-approve">Approve Request</a>
-              <a href="<?= rejectionUrl ?>" class="btn btn-reject">Reject Request</a>
-          </div>
-          
-          <!-- <p style="text-align: center;">Please contact the employee if you need additional information. Thank you!</p> -->
-      </div>
-  </body>
+<head>
+<base target="_top">
+<style>
+    <?!= include('GlobalStyle'); ?>
+</style>
+</head>
+<body>
+    <div class="email-container card-layout">
+        
+        <p>Hi,</p>
+        <p><?= bodyMessage ?></p>
+        
+        <div class="info-card">
+            <div class="info-card-title">Requesting Employee</div>
+            <div class="info-card-body">
+                <table class="info-table" cellpadding="0" cellspacing="0">
+                    <tr>
+                        <td class="info-label">Name:</td>
+                        <td class="info-value"><?= receiverName ?></td>
+                    </tr>
+                    <tr class="last-row">
+                        <td class="info-label">Email Address:</td>
+                        <td class="info-value"><?= employeeEmail ?></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        
+        <div class="info-card">
+            <div class="info-card-title">Leave Details</div>
+            <div class="info-card-body">
+                <table class="info-table" cellpadding="0" cellspacing="0">
+                    <tr>
+                        <td class="info-label">Main Leave Type:</td>
+                        <td class="info-value"><?= leaveType ?></td>
+                    </tr>
+                    <tr>
+                        <td class="info-label">Leave Sub-Category:</td>
+                        <td class="info-value"><?= subLeaveType ?></td>
+                    </tr>
+                    <tr>
+                        <td class="info-label">Start Date:</td>
+                        <td class="info-value"><?= formattedStartDate ?></td>
+                    </tr>
+                    <tr>
+                        <td class="info-label">End Date:</td>
+                        <td class="info-value"><?= formattedEndDate ?></td>
+                    </tr>
+                    <tr>
+                        <td class="info-label">Leave Duration:</td>
+                        <td class="info-value"><?= leaveHoursDay ?></td>
+                    </tr>
+                    <tr class="last-row">
+                        <td class="info-label">Reason:</td>
+                        <td class="info-value"><?= employeeReason ?></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        
+        <div class="action-buttons">
+            <a href="<?= approvalUrl ?>" class="btn btn-approve">Approve Request</a>
+            <a href="<?= rejectionUrl ?>" class="btn btn-reject">Reject Request</a>
+        </div>
+        
+        <!-- <p style="text-align: center;">Please contact the employee if you need additional information. Thank you!</p> -->
+    </div>
+</body>
 </html>

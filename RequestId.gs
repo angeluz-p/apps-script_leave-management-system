@@ -1,5 +1,5 @@
 function generateRequestId(sheet) {
-  const currentYear = new Date().getFullYear();
+  const currentYear = SHEET_YEAR;
 
   // Get all existing request IDs from Column Q
   const dataRange = sheet.getDataRange();
@@ -37,9 +37,8 @@ function generateRequestId(sheet) {
  * This will preserve existing Request IDs and ensure new submissions continue from the highest number
  */
 function resetRequestIdCounter() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(ALL_RECORDS);
-  const currentYear = new Date().getFullYear();
+  const sheet = ACTIVE_SHEET.getSheetByName(ALL_RECORDS);
+  const currentYear = SHEET_YEAR;
 
   // Get the data range
   const dataRange = sheet.getDataRange();
@@ -91,7 +90,7 @@ function resetRequestIdCounter() {
  * Enhanced generateRequestId that considers stored maximum when no existing IDs are found
  */
 function generateRequestIdEnhanced(sheet) {
-  const currentYear = new Date().getFullYear();
+  const currentYear = SHEET_YEAR;
 
   // Get all existing request IDs from Column Q
   const dataRange = sheet.getDataRange();
@@ -142,9 +141,8 @@ function generateRequestIdEnhanced(sheet) {
  * This will only add Request IDs to rows that don't already have them
  */
 function fillMissingRequestIds() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(ALL_RECORDS);
-  const currentYear = new Date().getFullYear();
+  const sheet = ACTIVE_SHEET.getSheetByName(ALL_RECORDS);
+  const currentYear = SHEET_YEAR;
 
   // Get the data range
   const dataRange = sheet.getDataRange();
@@ -223,7 +221,7 @@ function fillMissingRequestIds() {
  * Use this if you want to completely start over from 0001
  */
 function clearStoredCounter() {
-  const currentYear = new Date().getFullYear();
+  const currentYear = SHEET_YEAR;
   PropertiesService.getScriptProperties().deleteProperty(
     "lastRequestNumber_" + currentYear
   );
